@@ -8,6 +8,13 @@ import pandas as pd
 import requests
 import sys, os
 import random
+
+# ── API key — reads from Streamlit Cloud secrets or local environment ─────────
+def get_api_key():
+    try:
+        return st.secrets["ANTHROPIC_API_KEY"]
+    except Exception:
+        return os.environ.get("ANTHROPIC_API_KEY", "")
 sys.path.insert(0, os.path.dirname(__file__))
 
 from data import get_players
@@ -514,9 +521,14 @@ Be specific, name players, write like an engaging fantasy analyst. No generic ad
         if st.button("✨ Generate AI Summary", type="primary"):
             with st.spinner("Claude is breaking down your draft..."):
                 try:
+                    api_key = get_api_key()
+                    headers = {"Content-Type": "application/json"}
+                    if api_key:
+                        headers["x-api-key"] = api_key
+                        headers["anthropic-version"] = "2023-06-01"
                     resp = requests.post(
                         "https://api.anthropic.com/v1/messages",
-                        headers={"Content-Type": "application/json"},
+                        headers=headers,
                         json={
                             "model": "claude-sonnet-4-20250514",
                             "max_tokens": 1000,
@@ -525,6 +537,8 @@ Be specific, name players, write like an engaging fantasy analyst. No generic ad
                         timeout=30,
                     )
                     data = resp.json()
+                    if "error" in data:
+                        raise Exception(data["error"])
                     summary = data["content"][0]["text"]
                     st.markdown(summary)
 
