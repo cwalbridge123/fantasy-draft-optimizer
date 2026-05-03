@@ -518,70 +518,62 @@ Write a sharp, personalized 3-4 paragraph draft summary:
 
 Be specific, name players, write like an engaging fantasy analyst. No generic advice."""
 
-        # Use session_state to persist the summary across reruns
+        # ── Session state setup ──────────────────────────────────────────
         if "ai_summary" not in st.session_state:
-            st.session_state.ai_summary = None
-        if "ai_summary_error" not in st.session_state:
-            st.session_state.ai_summary_error = None
+            st.session_state["ai_summary"] = ""
+        if "ai_error" not in st.session_state:
+            st.session_state["ai_error"] = ""
 
-        col_btn, col_clear = st.columns([2, 1])
-        with col_btn:
-            generate = st.button("✨ Generate AI Summary", type="primary", use_container_width=True)
-        with col_clear:
-            if st.button("🔄 Clear", use_container_width=True):
-                st.session_state.ai_summary = None
-                st.session_state.ai_summary_error = None
+        # ── Button ───────────────────────────────────────────────────────
+        if st.button("✨ Generate AI Summary", type="primary"):
+            st.session_state["ai_summary"] = ""
+            st.session_state["ai_error"] = ""
 
-        if generate:
-            st.session_state.ai_summary = None
-            st.session_state.ai_summary_error = None
-            with st.spinner("Claude is analyzing your draft..."):
+            with st.spinner("Generating..."):
                 try:
                     api_key = get_api_key()
+
                     if not api_key:
-                        st.session_state.ai_summary_error = "No API key found. Add ANTHROPIC_API_KEY to your Streamlit secrets."
+                        st.session_state["ai_error"] = "ERROR: No API key. Set ANTHROPIC_API_KEY in Streamlit secrets."
                     else:
-                        resp = requests.post(
+                        r = requests.post(
                             "https://api.anthropic.com/v1/messages",
                             headers={
-                                "Content-Type":      "application/json",
+                                "content-type":      "application/json",
                                 "x-api-key":         api_key,
                                 "anthropic-version": "2023-06-01",
                             },
                             json={
-                                "model":      "claude-opus-4-5",
+                                "model":      "claude-haiku-4-5-20251001",
                                 "max_tokens": 1024,
                                 "messages":   [{"role": "user", "content": prompt}],
                             },
                             timeout=60,
                         )
-                        if resp.status_code != 200:
-                            st.session_state.ai_summary_error = f"API error {resp.status_code}: {resp.text[:400]}"
+                        raw = r.text
+                        if r.status_code != 200:
+                            st.session_state["ai_error"] = f"HTTP {r.status_code}: {raw[:500]}"
                         else:
-                            data = resp.json()
-                            if "error" in data:
-                                st.session_state.ai_summary_error = f"API error: {data['error'].get('message', str(data['error']))}"
-                            elif not data.get("content"):
-                                st.session_state.ai_summary_error = f"Empty response from API: {data}"
+                            j = r.json()
+                            if "error" in j:
+                                st.session_state["ai_error"] = f"API error: {j}"
+                            elif j.get("content"):
+                                st.session_state["ai_summary"] = j["content"][0]["text"]
                             else:
-                                st.session_state.ai_summary = data["content"][0]["text"]
-                except requests.exceptions.Timeout:
-                    st.session_state.ai_summary_error = "Request timed out — try again."
-                except Exception as e:
-                    st.session_state.ai_summary_error = f"{type(e).__name__}: {e}"
+                                st.session_state["ai_error"] = f"No content in response: {j}"
 
-        # Always render whatever is in session state
-        if st.session_state.ai_summary_error:
-            st.error(st.session_state.ai_summary_error)
+                except Exception as ex:
+                    st.session_state["ai_error"] = f"{type(ex).__name__}: {ex}"
 
-        if st.session_state.ai_summary:
-            st.markdown(
-                f'<div style="background:#172840;border:1px solid #1B998B;border-radius:10px;'
-                f'padding:20px 24px;color:#F0F4F8;line-height:1.7;">{st.session_state.ai_summary}</div>',
-                unsafe_allow_html=True
-            )
-        elif not generate and not st.session_state.ai_summary_error:
-            st.info("Click **✨ Generate AI Summary** to get Claude's personalized breakdown of your draft.")
+        # ── Always render state ──────────────────────────────────────────
+        if st.session_state["ai_error"]:
+            st.error(st.session_state["ai_error"])
+
+        if st.session_state["ai_summary"]:
+            st.success("Draft summary generated!")
+            st.markdown(st.session_state["ai_summary"])
+        else:
+            st.info("Click Generate AI Summary above to get your personalized draft breakdown.")
 
 
 # ── Validation Section ───────────────────────────────────────────────────────
